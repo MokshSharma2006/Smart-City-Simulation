@@ -31,10 +31,12 @@ MFRC522 rfid(SS_PIN, RST_PIN);
 Servo gateServo;
 #define SERVO_PIN 4
 
-
 #define TRIG_PIN 13
 #define ECHO_PIN 12
 #define PIR_PIN 27
+
+// NEW: IR Tripwire Pin
+#define GATE_IR_PIN 25
 
 // Timers & States
 bool isGateOpen = false;
@@ -44,6 +46,10 @@ const unsigned long gateDelay = 5000;
 unsigned long lastSensorCheck = 0;
 bool carWasPresent = false;
 bool motionWasPresent = false;
+
+// IR Tripwire States
+unsigned long lastIrTrigger = 0;
+bool irWasTriggered = false;
 
 void setup_wifi() {
   delay(10);
@@ -147,10 +153,13 @@ void setup() {
   gateServo.attach(SERVO_PIN, 500, 2400); 
   gateServo.write(0); 
 
-  // NEW: Initialize Sensor Pins
+  // Initialize Sensor Pins
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(PIR_PIN, INPUT);
+  
+  // NEW: Init IR Tripwire Pin
+  pinMode(GATE_IR_PIN, INPUT);
 
   SPI.begin();       
   rfid.PCD_Init();
@@ -159,7 +168,7 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(mqttCallback);
   
-  Serial.println("🚗 Gate Node Online (Radar + PIR Active)");
+  Serial.println("🚗 Gate Node Online (Radar + PIR + IR Active)");
 }
 
 // Main Loop
@@ -215,6 +224,26 @@ void loop() {
       sendSecureMessage("city/gate/status", "SENSOR:VEHICLE_CLEARED");
       carWasPresent = false;
     }
+  }
+
+  // NEW: 1.5 SECURITY TRIPWIRE (IR SENSOR) LOGIC
+  int ir_state = digitalRead(GATE_IR_PIN);
+
+  // If someone tries to sneak past (IR triggers) AND it's not a car
+  if (ir_state == LOW && !irWasTriggered && !carWasPresent) {
+    if (millis() - lastIrTrigger > 5000) { // 5-second cooldown
+      irWasTriggered = true;
+      lastIrTrigger = millis();
+      
+      Serial.println("🚨 WARNING: SECURITY BREACH! Tripwire activated.");
+      sendSecureMessage("city/gate/status", "ALERT! IR TRIPWIRE BREACHED");
+    }
+  } 
+  // If the object moves away
+  else if (ir_state == HIGH && irWasTriggered) {
+    irWasTriggered = false;
+    Serial.println("✅ Tripwire cleared.");
+    sendSecureMessage("city/gate/status", "STATUS:TRIPWIRE_CLEARED");
   }
 
   // 2. RFID Scanning
