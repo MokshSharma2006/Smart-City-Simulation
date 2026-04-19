@@ -301,7 +301,8 @@ http://<YOUR_PI_IP>:5000
 
 ### 7. Font-End View
 
-<img width="1919" height="1079" alt="Screenshot 2026-04-19 185957" src="https://github.com/user-attachments/assets/740a0f21-472c-4fd1-afb5-5e8742840777" />
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/8a092e41-cc03-4dd9-98d9-f259b8be6814" />
+
 
 
 ---
