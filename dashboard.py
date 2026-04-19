@@ -6,7 +6,8 @@ import hashlib
 from flask import Flask, render_template
 from flask_socketio import SocketIO
 
-# Flask & SocketIO Setup
+#Flask and WebSocket
+
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -14,12 +15,13 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 def index():
     return render_template('index.html')
 
-# Cryptographic Constants
+#Crypto
+
 SECRET_KEY = b'1234567890123456'
 IV =         b'abcdefghijklmnop'
-AUTHORIZED_UID = "YOUR_AUTHORIZED_UID_HERE"  # Replace with actual authorized UID for gate access
+AUTHORIZED_UID = "06CC6A06"
 
-# Anti-Replay Attack Tracking
+# Anti-Replay Attack & Telemetry Tracking
 node_nonces = {
     "city/gate/status": 0,
     "city/zone1/status": 0,
@@ -27,14 +29,31 @@ node_nonces = {
     "city/parking/status": 0
 }
 
-# MQTT Callbacks
+# Global counter for Live Network Telemetry
+network_message_count = 0
+
+# Telemetry  
+
+def emit_telemetry():
+    global network_message_count
+    while True:
+        socketio.sleep(1) # Wait exactly 1 second
+        # Broadcast the packets-per-second, then reset the counter
+        socketio.emit('network_telemetry', {'msg_per_sec': network_message_count})
+        network_message_count = 0
+
+#MQTT
+
 def on_connect(client, userdata, flags, reason_code, properties):
     print("✅ CENTRAL CONTROL ONLINE - Subscribed to city/+/status")
     client.subscribe("city/+/status") 
 
 def on_message(client, userdata, msg):
-    global node_nonces
+    global node_nonces, network_message_count
     topic = msg.topic
+    
+    # Register the packet for the live telemetry chart
+    network_message_count += 1
     
     try:
         raw_payload = msg.payload.decode('utf-8')
@@ -62,10 +81,9 @@ def on_message(client, userdata, msg):
         encrypted_bytes = base64.b64decode(encrypted_data)
         cipher = AES.new(SECRET_KEY, AES.MODE_CBC, IV)
         decrypted_padded = cipher.decrypt(encrypted_bytes)
-        # Remove padding
         plaintext = decrypted_padded[:-decrypted_padded[-1]].decode('utf-8')
         
-        # Data Routing Based on Topic
+        # Data Routing
         
         # --- 🚪 NODE 1: GATE CHECKPOINT ---
         if topic == "city/gate/status":
@@ -79,12 +97,10 @@ def on_message(client, userdata, msg):
         # --- 🌳 NODE 2: PERIMETER ZONE (SUPER NODE) ---
         elif topic == "city/zone1/status":
             if plaintext.startswith("ENV:"):
-                # Expected format: ENV:T:25:H:60:L:1024:IR:1:PIR:0
                 p = plaintext.split(":") 
                 if len(p) >= 11:
                     ir_status = "TRIGGERED" if p[8] == "0" else "CLEAR"
                     pir_status = "MOTION DETECTED" if p[10] == "1" else "STILL"
-                    
                     socketio.emit('zone_data', {
                         'temp': p[2], 'hum': p[4], 'light': p[6],
                         'ir': ir_status, 'pir': pir_status
@@ -95,7 +111,6 @@ def on_message(client, userdata, msg):
         # --- 🚦 NODE 3: TRAFFIC JUNCTION ---
         elif topic == "city/traffic/status":
             if plaintext.startswith("ENV:"):
-                # Expected format: ENV:L:450:IR1:1:IR2:0
                 p = plaintext.split(":") 
                 ir1 = "CLEAR" if p[4] == "1" else "WAITING"
                 ir2 = "CLEAR" if p[6] == "1" else "WAITING"
@@ -106,15 +121,14 @@ def on_message(client, userdata, msg):
         # --- 🅿️ NODE 4: SMART PARKING ---
         elif topic == "city/parking/status":
             if plaintext.startswith("PARKING:"):
-                # Expected format: PARKING:L:1024:P1:FREE:P2:OCCUPIED:FREE:1
                 p = plaintext.split(":") 
                 socketio.emit('parking_data', {'light': p[2], 'p1': p[4], 'p2': p[6], 'free': p[8]})
 
     except Exception as e:
         print(f"Decode Error on {topic}: {e}")
 
-
 # System Initialization
+
 mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
@@ -124,6 +138,10 @@ if __name__ == '__main__':
     try:
         mqtt_client.connect("localhost", 1883, 60)
         mqtt_client.loop_start() 
+        
+        # Start the background telemetry thread
+        socketio.start_background_task(emit_telemetry)
+        
         socketio.run(app, host='0.0.0.0', port=5000, debug=False)
     except KeyboardInterrupt:
         print("\n🛑 SHUTTING DOWN COMMAND CENTER...")
