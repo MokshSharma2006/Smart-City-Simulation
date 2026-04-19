@@ -53,6 +53,21 @@ All telemetry is secured with **AES-128-CBC encryption**, **HMAC-SHA256 authenti
     └────────────┘  └────────────┘  └────────────┘  └──────────────┘
 ```
 
+### 📁 Raspberry Pi File Architecture
+
+```
+SmartCity/
+│
+├── dashboard.py              # Flask backend — MQTT subscriber, AES decryption, SocketIO broadcaster
+│
+├── templates/
+│   └── index.html            # Live HUD frontend — dark-mode CSS Grid dashboard (HTML/JS)
+```
+
+> Flask requires the `templates/` folder to be in the same directory as `dashboard.py` to correctly serve `index.html`.
+
+---
+
 ### 🧠 Command Center — Raspberry Pi 5 (8GB)
 
 The central hub runs a **Mosquitto MQTT broker** to ingest encrypted telemetry from all edge nodes. A Python backend decrypts payloads using `pycryptodome` and pushes live state to the web dashboard via `flask-socketio`.
