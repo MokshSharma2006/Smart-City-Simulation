@@ -8,9 +8,9 @@
 
 // Wifi-Connectivity & Crypto Creds
 
-const char* ssid        = "Moksh";
-const char* password    = "manas1122";
-const char* mqtt_server = "192.168.1.109";
+const char* ssid        = "YOUR_WIFI_SSID";
+const char* password    = "YOUR_WIFI_PASSKEY";
+const char* mqtt_server = "RASPBERRY_PI_IP";
 
 const char* key_char = "1234567890123456";
 const char* iv_char  = "abcdefghijklmnop";
@@ -254,21 +254,20 @@ void loop() {
   reconnectMQTT();
   client.loop();
 
-  // ----------------------------------------------------------------
-  // A. READ SENSORS ONCE — reused in all sections below
-  // ----------------------------------------------------------------
+
+  // A. REead Sensor Once — reused in all sections below
+
   int lightLevel = analogRead(LDR_PIN);
   int ir1        = digitalRead(IR1_PIN);
   int ir2        = digitalRead(IR2_PIN);
 
-  // ----------------------------------------------------------------
-  // B. ADAPTIVE DISPLAY BRIGHTNESS — runs every loop
-  // ----------------------------------------------------------------
+  
+  // B. Adaptive Display Brightness — runs every loop
   display.setBrightness(lightLevel < 300 ? 1 : 7);
 
-  // ----------------------------------------------------------------
-  // C. TELEMETRY — every 10 seconds
-  // ----------------------------------------------------------------
+  
+  // C. Telemetry — every 10 seconds
+  
   if (millis() - lastTelemetryTime >= 10000) {
     lastTelemetryTime = millis();
     String envData = "ENV:L:" + String(lightLevel)
@@ -278,18 +277,18 @@ void loop() {
     sendSecureMessage("city/traffic/status", envData);
   }
 
-  // ----------------------------------------------------------------
-  // D. EMERGENCY COOLDOWN EXPIRY
-  // ----------------------------------------------------------------
+  
+  // D. Emergency Cooldown Expiry
+  
   if (inEmergencyCooldown &&
       millis() - emergencyCooldownStart >= EMERGENCY_COOLDOWN_MS) {
     inEmergencyCooldown = false;
     Serial.println("✅ Cooldown expired — siren detection re-armed.");
   }
 
-// ----------------------------------------------------------------
-  // E. ANALOG SOUND SENSOR — Reads raw volume (0 to 1023)
-  // ----------------------------------------------------------------
+
+  // E. Analog Sound Sensor — Reads raw volume (0 to 1023)
+  
   if (millis() - lastSoundCheckTime >= 50) {
     lastSoundCheckTime = millis();
 
@@ -316,9 +315,9 @@ void loop() {
   }
 
 
-  // ----------------------------------------------------------------
-  // F. COUNTDOWN DISPLAY — updates only when second changes
-  // ----------------------------------------------------------------
+  
+  // F. Countdown Display — updates only when second changes
+  
   unsigned long elapsed        = millis() - stateStartTime;
   int           remainingSec   = (int)((stateDuration - elapsed) / 1000);
   if (remainingSec < 0) remainingSec = 0;
@@ -329,7 +328,7 @@ void loop() {
   }
 
   // ----------------------------------------------------------------
-  // G. STATE TRANSITIONS — fires once elapsed >= duration
+  // G. State Transitions — fires once elapsed >= duration
   //    Cycle: GREEN(60s) → YELLOW(10s) → RED(60s) → GREEN(60s) ...
   // ----------------------------------------------------------------
   if (elapsed >= stateDuration) {
