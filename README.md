@@ -296,6 +296,11 @@ Then open a browser on any device on the local network and navigate to:
 http://<YOUR_PI_IP>:5000
 ```
 
+### 7. Font-End View
+
+<img width="1919" height="1079" alt="Screenshot 2026-04-19 185957" src="https://github.com/user-attachments/assets/740a0f21-472c-4fd1-afb5-5e8742840777" />
+
+
 ---
 
 ## 🛠️ Troubleshooting
