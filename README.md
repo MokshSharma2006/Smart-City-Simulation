@@ -117,7 +117,7 @@ Autonomous vehicle storage management for a 2-spot parking deck.
 
 | Node | Board | Primary Role |
 |---|---|---|
-| Node 01 | ESP32 | Access Gate & RFID Security | PIR
+| Node 01 | ESP32 | Access Gate & RFID Security | 
 | Node 02 | ESP32-C3 | Environmental & Perimeter Monitoring |
 | Node 03 | Arduino Uno R4 WiFi | Traffic Junction Management |
 | Node 04 | NodeMCU ESP8266 | Smart Parking Management |
