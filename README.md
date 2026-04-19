@@ -117,7 +117,7 @@ Autonomous vehicle storage management for a 2-spot parking deck.
 
 | Node | Board | Primary Role |
 |---|---|---|
-| Node 01 | ESP32 | Access Gate & RFID Security |
+| Node 01 | ESP32 | Access Gate & RFID Security | PIR
 | Node 02 | ESP32-C3 | Environmental & Perimeter Monitoring |
 | Node 03 | Arduino Uno R4 WiFi | Traffic Junction Management |
 | Node 04 | NodeMCU ESP8266 | Smart Parking Management |
@@ -144,6 +144,7 @@ Wired in series with the cathode leg of all Traffic Light and Parking Indicator 
 | RFID RC522 | SDA / SCK / MOSI / MISO | D5 / D18 / D23 / D19 | Strict VSPI hardware pins |
 | RFID RC522 | RST / VCC | D22 / 3V3 | **3.3V only — 5V will damage the module** |
 | Servo Motor | Signal / VCC | D13 / VIN (5V) | Requires 5V for actuation |
+| PIR Motion | OUT / Data | D27 | Safe digital input |
 
 ### Node 02 — Perimeter Zone (ESP32-C3)
 
