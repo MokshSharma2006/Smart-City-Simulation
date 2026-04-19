@@ -62,18 +62,6 @@ SmartCity/
 │
 ├── templates/
 │   └── index.html            # Live HUD frontend — dark-mode CSS Grid dashboard (HTML/JS)
-│
-├── Node_01_AccessGate/
-│   └── Node_01_AccessGate.ino
-│
-├── Node_02_Perimeter/
-│   └── Node_02_Perimeter.ino
-│
-├── Node_03_TrafficJunction/
-│   └── Node_03_TrafficJunction.ino
-│
-└── Node_04_SmartParking/
-    └── Node_04_SmartParking.ino
 ```
 
 > Flask requires the `templates/` folder to be in the same directory as `dashboard.py` to correctly serve `index.html`.
@@ -272,16 +260,18 @@ pip install paho-mqtt pycryptodome flask flask-socketio
 
 Install the bundled libraries from the included `libraries.zip` file:
 
-1. In the Arduino IDE, go to **Sketch → Include Library → Add .ZIP Library...**
-2. Navigate to the `libraries.zip` file included in the root of this repository.
-3. Select it and click **Open** — the IDE will extract and register all libraries automatically.
-4. Restart the Arduino IDE to ensure all libraries are correctly indexed.
+```
+C://
+│
+├── User/              
+│
+├── Document/
+│   └── Arduino            
+│
+├── liabraries/
+│   └── PASTE ALL THE FOLDERS FROM THE EXTRACTED LIABRARIE FOLDER
 
-The modified libraries are pre-configured for the following custom implementations:
-
-- **Analog bypass** for sound sensors (Node 03) to prevent false digital triggers during Wi-Fi transmission bursts
-- **Digital bypass** for LDR sensors (Node 04) using hardware threshold logic via `GPIO16` to avoid ADC conflicts
-- **Power-stable** RFID communication timing adjustments (Node 01) to tolerate decoupling capacitor charge cycles
+```
 
 ### 5. Flash Edge Node Firmware
 
