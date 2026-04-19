@@ -9,9 +9,9 @@
 
 // Wifi-Connectivity
 
-const char* ssid = "Moksh";
-const char* password = "manas1122";
-const char* mqtt_server = "192.168.1.109"; 
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSKEY";
+const char* mqtt_server = "RASPBERRY_PI_IP"; 
 
 const char* key_char = "1234567890123456"; 
 const char* iv_char  = "abcdefghijklmnop"; 
