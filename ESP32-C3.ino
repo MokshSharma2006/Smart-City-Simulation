@@ -6,12 +6,10 @@
 #include <SHA256.h>
 #include <DHT.h>
 
-// ==========================================
-// 🌐 NETWORK & SECURITY CREDENTIALS
-// ==========================================
-const char* ssid        = "Moksh";       
-const char* password    = "manas1122";   
-const char* mqtt_server = "192.168.1.109";          
+// Wifi-Connectivity
+const char* ssid        = "YOUR_WIFI_SSID";       
+const char* password    = "YOUR_WIFI_PASSKEY";   
+const char* mqtt_server = "RASPBERRY_PI_IP";          
 
 const char* key_char = "1234567890123456"; 
 const char* iv_char  = "abcdefghijklmnop"; 
@@ -20,9 +18,7 @@ WiFiClient   wifiClient;
 PubSubClient client(wifiClient);
 uint32_t     message_nonce = 0;
 
-// ==========================================
-// 🔌 HARDWARE PINS (ESP32-C3 SAFE PINS)
-// ==========================================
+// Pins Connection
 #define DHTPIN  1     // DHT11 Data Pin
 #define DHTTYPE DHT11 // Change to DHT22 if needed
 DHT dht(DHTPIN, DHTTYPE);
@@ -33,9 +29,8 @@ DHT dht(DHTPIN, DHTTYPE);
 
 unsigned long lastTelemetryTime = 0;
 
-// ==========================================
-// 🛡️ CRYPTO ENGINE
-// ==========================================
+// Crypto Engine
+
 static const char B64_ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 String base64Encode(byte* data, int length) {
@@ -114,9 +109,8 @@ void sendSecureMessage(const String& topic, const String& message) {
   client.publish(topic.c_str(), finalPayload.c_str());
 }
 
-// ==========================================
-// 🚀 SYSTEM SETUP
-// ==========================================
+// Setup
+
 void setup() {
   Serial.begin(115200);
   delay(4000); // Give Windows/USB time to connect to the Serial Monitor
@@ -157,9 +151,7 @@ void setup() {
   client.setServer(mqtt_server, 1883);
 }
 
-// ==========================================
-// 🔄 MAIN LOOP
-// ==========================================
+// Main Loop
 void loop() {
   // Reconnect MQTT if disconnected
   if (!client.connected()) {
