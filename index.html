@@ -1,449 +1,84 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart City HUD</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Fira+Code:wght@400;600&display=swap"
-        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #050811;
-            color: #00ffff;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 14px;
-            overflow: hidden;
-            background-image: linear-gradient(#0a1022 1px, transparent 1px), linear-gradient(90deg, #0a1022 1px, transparent 1px);
-            background-size: 50px 50px;
-        }
+        body { margin: 0; padding: 0; background-color: #050811; color: #00ffff; font-family: 'Orbitron', sans-serif; font-size: 14px; overflow: hidden; background-image: linear-gradient(#0a1022 1px, transparent 1px), linear-gradient(90deg, #0a1022 1px, transparent 1px); background-size: 50px 50px; }
+        .hud-container { width: 100vw; height: 100vh; padding: 20px; box-sizing: border-box; display: grid; grid-template-columns: 280px 1fr 280px; grid-template-rows: 60px 1fr 200px; gap: 20px; }
+        
+        .glowing-cyan { text-shadow: 0 0 5px #00ffff, 0 0 10px #00ffff; }
+        .glowing-red { text-shadow: 0 0 5px #ff0000, 0 0 10px #ff0000; color: #ff0000; }
+        .data-text { font-family: 'Fira Code', monospace; color: #fff; }
+        
+        .panel { background: rgba(10, 16, 34, 0.7); border-radius: 5px; box-shadow: 0 0 20px rgba(0, 255, 255, 0.2), 0 0 5px rgba(0, 255, 255, 0.1); display: flex; flex-direction: column; padding: 15px; overflow: hidden; z-index: 10;}
+        .widget-title { font-size: 14px; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid rgba(0, 255, 255, 0.3); padding-bottom: 5px; margin-bottom: 10px; letter-spacing: 1px; }
 
-        .hud-container {
-            width: 100vw;
-            height: 100vh;
-            padding: 20px;
-            box-sizing: border-box;
-            display: grid;
-            grid-template-columns: 280px 1fr 280px;
-            grid-template-rows: 60px 1fr 200px;
-            gap: 20px;
-        }
+        .data-bar-bg { background: #0a1022; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 4px; border: 1px solid rgba(0, 255, 255, 0.2); }
+        .data-bar-cyan { background: #00ffff; height: 100%; box-shadow: 0 0 5px #00ffff; transition: width 0.3s; }
 
-        .glowing-cyan {
-            text-shadow: 0 0 5px #00ffff, 0 0 10px #00ffff;
-        }
+        .header { grid-column: 2 / span 1; grid-row: 1 / span 1; display: flex; justify-content: center; align-items: center; position: relative; }
+        .header-text { font-size: 22px; font-weight: 700; letter-spacing: 4px; }
+        .header::before { content: ''; position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: repeating-linear-gradient(90deg, #00ffff, #00ffff 2px, transparent 2px, transparent 6px); }
 
-        .glowing-red {
-            text-shadow: 0 0 5px #ff0000, 0 0 10px #ff0000;
-            color: #ff0000;
-        }
+        .left-col { grid-column: 1 / span 1; grid-row: 2 / span 1; display: flex; flex-direction: column; gap: 20px; }
+        .terminal-log { flex-grow: 1; overflow-y: auto; font-family: 'Fira Code', monospace; font-size: 12px; color: #99ffff; line-height: 1.6; }
+        .terminal-line { margin-bottom: 4px; border-left: 2px solid #00ffff; padding-left: 8px; }
+        .alert-text { color: #ff0000; text-shadow: 0 0 5px #ff0000; border-left-color: #ff0000; }
 
-        .data-text {
-            font-family: 'Fira Code', monospace;
-            color: #fff;
-        }
+        .stat-row { margin-bottom: 8px; }
+        .stat-header { display: flex; justify-content: space-between; font-size: 11px; text-transform: uppercase; color: #66ccff; }
 
-        .panel {
-            background: rgba(10, 16, 34, 0.7);
-            border-radius: 5px;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2), 0 0 5px rgba(0, 255, 255, 0.1);
-            display: flex;
-            flex-direction: column;
-            padding: 15px;
-            overflow: hidden;
-            z-index: 10;
-        }
+        .right-col { grid-column: 3 / span 1; grid-row: 2 / span 1; display: flex; flex-direction: column; gap: 20px; }
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .status-box { background: rgba(0, 255, 255, 0.05); border: 1px solid rgba(0, 255, 255, 0.3); padding: 10px; text-align: center; border-radius: 4px; }
+        .status-box span { display: block; font-size: 10px; color: #66ccff; margin-bottom: 5px; }
+        .status-box div { font-size: 14px; font-weight: 700; }
 
-        .widget-title {
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-            padding-bottom: 5px;
-            margin-bottom: 10px;
-            letter-spacing: 1px;
-        }
-
-        .data-bar-bg {
-            background: #0a1022;
-            height: 8px;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 4px;
-            border: 1px solid rgba(0, 255, 255, 0.2);
-        }
-
-        .data-bar-cyan {
-            background: #00ffff;
-            height: 100%;
-            box-shadow: 0 0 5px #00ffff;
-            transition: width 0.3s;
-        }
-
-        .header {
-            grid-column: 2 / span 1;
-            grid-row: 1 / span 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-
-        .header-text {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: 4px;
-        }
-
-        .header::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            bottom: 0;
-            width: 100%;
-            height: 2px;
-            background: repeating-linear-gradient(90deg, #00ffff, #00ffff 2px, transparent 2px, transparent 6px);
-        }
-
-        .left-col {
-            grid-column: 1 / span 1;
-            grid-row: 2 / span 1;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .terminal-log {
-            flex-grow: 1;
-            overflow-y: auto;
-            font-family: 'Fira Code', monospace;
-            font-size: 12px;
-            color: #99ffff;
-            line-height: 1.6;
-        }
-
-        .terminal-line {
-            margin-bottom: 4px;
-            border-left: 2px solid #00ffff;
-            padding-left: 8px;
-        }
-
-        .alert-text {
-            color: #ff0000;
-            text-shadow: 0 0 5px #ff0000;
-            border-left-color: #ff0000;
-        }
-
-        .stat-row {
-            margin-bottom: 8px;
-        }
-
-        .stat-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            text-transform: uppercase;
-            color: #66ccff;
-        }
-
-        .right-col {
-            grid-column: 3 / span 1;
-            grid-row: 2 / span 1;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .status-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .status-box {
-            background: rgba(0, 255, 255, 0.05);
-            border: 1px solid rgba(0, 255, 255, 0.3);
-            padding: 10px;
-            text-align: center;
-            border-radius: 4px;
-        }
-
-        .status-box span {
-            display: block;
-            font-size: 10px;
-            color: #66ccff;
-            margin-bottom: 5px;
-        }
-
-        .status-box div {
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        .parking-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 5px;
-        }
-
-        .parking-spot {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 10px;
-            background: rgba(0, 255, 255, 0.05);
-            border-left: 3px solid #00ffff;
-        }
-
-        .occupied {
-            border-left-color: #ff0000;
-        }
-
-        .occupied .spot-status {
-            color: #ff0000;
-            text-shadow: 0 0 5px #ff0000;
-        }
-
-        .free .spot-status {
-            color: #00ffff;
-            text-shadow: 0 0 5px #00ffff;
-        }
+        .parking-list { display: flex; flex-direction: column; gap: 10px; margin-top: 5px; }
+        .parking-spot { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: rgba(0, 255, 255, 0.05); border-left: 3px solid #00ffff; }
+        .occupied { border-left-color: #ff0000; }
+        .occupied .spot-status { color: #ff0000; text-shadow: 0 0 5px #ff0000; }
+        .free .spot-status { color: #00ffff; text-shadow: 0 0 5px #00ffff; }
 
         /* Topology Map */
-        .central-map {
-            grid-column: 2 / span 1;
-            grid-row: 2 / span 1;
-            position: relative;
-            background-image: radial-gradient(circle, rgba(0, 255, 255, 0.05) 0%, transparent 70%);
-            border: 1px solid rgba(0, 255, 255, 0.1);
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 10px;
-        }
+        .central-map { grid-column: 2 / span 1; grid-row: 2 / span 1; position: relative; background-image: radial-gradient(circle, rgba(0,255,255,0.05) 0%, transparent 70%); border: 1px solid rgba(0, 255, 255, 0.1); overflow: hidden; display: flex; justify-content: center; align-items: center; border-radius: 10px; }
+        .network-lines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        .net-line { stroke: rgba(0, 255, 255, 0.4); stroke-width: 2; stroke-dasharray: 6 6; animation: dash 20s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: 1000; } }
 
-        .network-lines {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            pointer-events: none;
-        }
+        .rings-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 350px; height: 350px; z-index: 2; pointer-events: none; }
+        .sci-ring { position: absolute; border-radius: 50%; border: 1px solid transparent; }
+        .ring-1 { top: 0; left: 0; width: 100%; height: 100%; border-top: 2px solid rgba(0, 255, 255, 0.5); border-bottom: 2px solid rgba(0, 255, 255, 0.5); animation: spin 12s linear infinite; box-shadow: 0 0 15px rgba(0,255,255,0.1) inset; }
+        .ring-2 { top: 10%; left: 10%; width: 80%; height: 80%; border-left: 2px dashed rgba(0, 255, 255, 0.3); border-right: 2px dashed rgba(0, 255, 255, 0.3); animation: spin-reverse 18s linear infinite; }
+        .ring-3 { top: 20%; left: 20%; width: 60%; height: 60%; border-top: 2px dotted rgba(0, 255, 255, 0.8); animation: spin 8s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
 
-        .net-line {
-            stroke: rgba(0, 255, 255, 0.4);
-            stroke-width: 2;
-            stroke-dasharray: 6 6;
-            animation: dash 20s linear infinite;
-        }
+        .net-node { position: absolute; z-index: 3; background: rgba(10, 16, 34, 0.85); border: 2px solid #00ffff; border-radius: 6px; padding: 10px 20px; box-shadow: 0 0 15px rgba(0, 255, 255, 0.3); transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: all 0.3s ease; }
+        .core-node { top: 50%; left: 50%; width: 110px; height: 110px; border-radius: 50%; border: 4px solid #00ffff; box-shadow: 0 0 30px #00ffff, inset 0 0 20px rgba(0, 255, 255, 0.5); background: rgba(0, 50, 50, 0.6); }
+        .core-text { font-weight: 700; font-size: 16px; text-shadow: 0 0 10px #00ffff; text-align: center; line-height: 1.2; }
+        .core-sub { font-size: 9px; color: #66ccff; margin-top: 5px; font-family: 'Fira Code', monospace; }
 
-        @keyframes dash {
-            to {
-                stroke-dashoffset: 1000;
-            }
-        }
+        .node-gate { top: 20%; left: 20%; }
+        .node-zone { top: 80%; left: 20%; }
+        .node-traffic { top: 20%; left: 80%; }
+        .node-parking { top: 80%; left: 80%; }
+        .node-title { font-size: 10px; color: #66ccff; margin-bottom: 5px; letter-spacing: 1px; }
+        .node-status { font-family: 'Fira Code', monospace; font-size: 13px; font-weight: 700; color: #00ffff; text-shadow: 0 0 5px #00ffff; }
+        
+        .node-alert-state { border-color: #ff0000 !important; box-shadow: 0 0 25px rgba(255, 0, 0, 0.6) !important; background: rgba(50, 0, 0, 0.8) !important; animation: node-pulse 1s infinite; }
+        .node-alert-state .node-status { color: #ff0000; text-shadow: 0 0 10px #ff0000; }
+        @keyframes node-pulse { 0% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.05); } 100% { transform: translate(-50%, -50%) scale(1); } }
 
-        .rings-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 350px;
-            height: 350px;
-            z-index: 2;
-            pointer-events: none;
-        }
-
-        .sci-ring {
-            position: absolute;
-            border-radius: 50%;
-            border: 1px solid transparent;
-        }
-
-        .ring-1 {
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-top: 2px solid rgba(0, 255, 255, 0.5);
-            border-bottom: 2px solid rgba(0, 255, 255, 0.5);
-            animation: spin 12s linear infinite;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.1) inset;
-        }
-
-        .ring-2 {
-            top: 10%;
-            left: 10%;
-            width: 80%;
-            height: 80%;
-            border-left: 2px dashed rgba(0, 255, 255, 0.3);
-            border-right: 2px dashed rgba(0, 255, 255, 0.3);
-            animation: spin-reverse 18s linear infinite;
-        }
-
-        .ring-3 {
-            top: 20%;
-            left: 20%;
-            width: 60%;
-            height: 60%;
-            border-top: 2px dotted rgba(0, 255, 255, 0.8);
-            animation: spin 8s linear infinite;
-        }
-
-        @keyframes spin {
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        @keyframes spin-reverse {
-            100% {
-                transform: rotate(-360deg);
-            }
-        }
-
-        .net-node {
-            position: absolute;
-            z-index: 3;
-            background: rgba(10, 16, 34, 0.85);
-            border: 2px solid #00ffff;
-            border-radius: 6px;
-            padding: 10px 20px;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(4px);
-            transition: all 0.3s ease;
-        }
-
-        .core-node {
-            top: 50%;
-            left: 50%;
-            width: 110px;
-            height: 110px;
-            border-radius: 50%;
-            border: 4px solid #00ffff;
-            box-shadow: 0 0 30px #00ffff, inset 0 0 20px rgba(0, 255, 255, 0.5);
-            background: rgba(0, 50, 50, 0.6);
-        }
-
-        .core-text {
-            font-weight: 700;
-            font-size: 16px;
-            text-shadow: 0 0 10px #00ffff;
-            text-align: center;
-            line-height: 1.2;
-        }
-
-        .core-sub {
-            font-size: 9px;
-            color: #66ccff;
-            margin-top: 5px;
-            font-family: 'Fira Code', monospace;
-        }
-
-        .node-gate {
-            top: 20%;
-            left: 20%;
-        }
-
-        .node-zone {
-            top: 80%;
-            left: 20%;
-        }
-
-        .node-traffic {
-            top: 20%;
-            left: 80%;
-        }
-
-        .node-parking {
-            top: 80%;
-            left: 80%;
-        }
-
-        .node-title {
-            font-size: 10px;
-            color: #66ccff;
-            margin-bottom: 5px;
-            letter-spacing: 1px;
-        }
-
-        .node-status {
-            font-family: 'Fira Code', monospace;
-            font-size: 13px;
-            font-weight: 700;
-            color: #00ffff;
-            text-shadow: 0 0 5px #00ffff;
-        }
-
-        .node-alert-state {
-            border-color: #ff0000 !important;
-            box-shadow: 0 0 25px rgba(255, 0, 0, 0.6) !important;
-            background: rgba(50, 0, 0, 0.8) !important;
-            animation: node-pulse 1s infinite;
-        }
-
-        .node-alert-state .node-status {
-            color: #ff0000;
-            text-shadow: 0 0 10px #ff0000;
-        }
-
-        @keyframes node-pulse {
-            0% {
-                transform: translate(-50%, -50%) scale(1);
-            }
-
-            50% {
-                transform: translate(-50%, -50%) scale(1.05);
-            }
-
-            100% {
-                transform: translate(-50%, -50%) scale(1);
-            }
-        }
-
-        .bottom-row {
-            grid-column: 1 / span 3;
-            grid-row: 3 / span 1;
-            display: grid;
-            grid-template-columns: 280px 1fr 280px;
-            gap: 20px;
-        }
-
-        .cyber-chart {
-            width: 100%;
-            height: 80%;
-            border-bottom: 1px solid #00ffff;
-            border-left: 1px solid #00ffff;
-            position: relative;
-            margin-top: 10px;
-        }
-
-        .cyber-line {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 50%;
-            background: linear-gradient(0deg, rgba(0, 255, 255, 0.2) 0%, transparent 100%);
-            border-top: 2px dashed #00ffff;
-        }
+        .bottom-row { grid-column: 1 / span 3; grid-row: 3 / span 1; display: grid; grid-template-columns: 280px 1fr 280px; gap: 20px; }
+        .cyber-chart { width: 100%; height: 80%; margin-top: 10px; position: relative; }
     </style>
 </head>
-
 <body>
     <div class="hud-container">
         <div class="header glowing-cyan">
@@ -454,9 +89,7 @@
             <div class="panel glowing-cyan" style="flex-grow: 1;">
                 <span class="widget-title">NODE 01: ACCESS GATE</span>
                 <div class="terminal-log" id="gate-log">
-                    <div class="terminal-line">> System initialized...</div>
-                    <div class="terminal-line">> ESP32 Scanner Online...</div>
-                    <div class="terminal-line">> Awaiting RFID scan...</div>
+                    <div class="terminal-line" style="color: #66ccff;">> Terminal cleared... awaiting scan.</div>
                 </div>
             </div>
 
@@ -464,28 +97,19 @@
                 <span class="widget-title">NODE 02: PERIMETER ZONE</span>
 
                 <div class="stat-row">
-                    <div class="stat-header"><span>Temp</span><span class="data-text"><span id="z-temp">0</span>
-                            °C</span></div>
-                    <div class="data-bar-bg">
-                        <div class="data-bar-cyan" id="bar-temp" style="width: 0%;"></div>
-                    </div>
+                    <div class="stat-header"><span>Temp</span><span class="data-text"><span id="z-temp">0</span> °C</span></div>
+                    <div class="data-bar-bg"><div class="data-bar-cyan" id="bar-temp" style="width: 0%;"></div></div>
                 </div>
                 <div class="stat-row">
-                    <div class="stat-header"><span>Humidity</span><span class="data-text"><span id="z-hum">0</span>
-                            %</span></div>
-                    <div class="data-bar-bg">
-                        <div class="data-bar-cyan" id="bar-hum" style="width: 0%;"></div>
-                    </div>
+                    <div class="stat-header"><span>Humidity</span><span class="data-text"><span id="z-hum">0</span> %</span></div>
+                    <div class="data-bar-bg"><div class="data-bar-cyan" id="bar-hum" style="width: 0%;"></div></div>
                 </div>
                 <div class="stat-row" style="margin-bottom: 15px;">
                     <div class="stat-header"><span>Light</span><span class="data-text" id="z-light">0</span></div>
-                    <div class="data-bar-bg">
-                        <div class="data-bar-cyan" id="bar-light" style="width: 0%;"></div>
-                    </div>
+                    <div class="data-bar-bg"><div class="data-bar-cyan" id="bar-light" style="width: 0%;"></div></div>
                 </div>
 
-                <div
-                    style="padding: 6px 10px; background: rgba(0,255,255,0.05); border-left: 3px solid #00ffff; margin-bottom: 8px;">
+                <div style="padding: 6px 10px; background: rgba(0,255,255,0.05); border-left: 3px solid #00ffff; margin-bottom: 8px;">
                     <span style="font-size: 9px; color: #66ccff; display: block; margin-bottom: 2px;">PIR MOTION</span>
                     <span class="data-text" id="z-pir" style="font-size: 12px; font-weight: 700;">AWAITING</span>
                 </div>
@@ -576,51 +200,126 @@
         </div>
 
         <div class="bottom-row">
-            <div class="panel glowing-cyan"><span class="widget-title">ENCRYPTION HASH</span>
-                <div style="font-size: 10px; overflow-wrap: break-word; color: #66ccff; font-family: monospace;">
-                    AES-128-CBC : SECURED<br>HMAC-SHA256 : VERIFIED<br>NONCE TRK : ACTIVE</div>
-            </div>
-            <div class="panel glowing-cyan"><span class="widget-title">NETWORK TELEMETRY</span>
+            <div class="panel glowing-cyan"><span class="widget-title">ENCRYPTION HASH</span><div style="font-size: 10px; overflow-wrap: break-word; color: #66ccff; font-family: monospace;">AES-128-CBC : SECURED<br>HMAC-SHA256 : VERIFIED<br>NONCE TRK   : ACTIVE</div></div>
+            
+            <div class="panel glowing-cyan">
+                <span class="widget-title">NETWORK TELEMETRY (PKT/SEC)</span>
                 <div class="cyber-chart">
-                    <div class="cyber-line"></div>
+                    <canvas id="telemetryChart"></canvas>
                 </div>
             </div>
-            <div class="panel glowing-cyan"><span class="widget-title">SYSTEM UPTIME</span>
-                <div style="font-size: 24px; text-align: center; margin-top: 10px;" id="uptime">00:00:00</div>
-            </div>
+            
+            <div class="panel glowing-cyan"><span class="widget-title">SYSTEM UPTIME</span><div style="font-size: 24px; text-align: center; margin-top: 10px;" id="uptime">00:00:00</div></div>
         </div>
     </div>
 
     <script>
         var socket = io();
 
+        // System Uptime Clock
         let sec = 0; setInterval(() => { sec++; let d = new Date(sec * 1000).toISOString().substr(11, 8); document.getElementById('uptime').innerText = d; }, 1000);
 
-        // NODE 1: GATE
-        socket.on('gate_data', function (data) {
-            let log = document.getElementById('gate-log');
-            let isAlert = data.msg.includes("ALERT") || data.msg.includes("DENIED");
-            let newEntry = `<div class="terminal-line ${isAlert ? 'alert-text' : ''}">> ${data.msg}</div>`;
-            log.innerHTML = newEntry + log.innerHTML;
+        // ==========================================
+        // 📈 LIVE TELEMETRY CHART CONFIGURATION
+        // ==========================================
+        const ctx = document.getElementById('telemetryChart').getContext('2d');
+        const telemetryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(15).fill(''), // Show last 15 seconds
+                datasets: [{
+                    label: 'Packets/Sec',
+                    data: Array(15).fill(0),
+                    borderColor: '#00ffff',
+                    backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 }, // Disable animation for instantaneous "cyber" updates
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        max: 5, // Default max, dynamically shifts if load spikes
+                        ticks: { color: '#66ccff', stepSize: 1, font: {family: 'Orbitron', size: 10} }, 
+                        grid: { color: 'rgba(0,255,255,0.1)' } 
+                    },
+                    x: { display: false }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
 
-            if (isAlert) {
+        // Listen for Telemetry data from Python
+        socket.on('network_telemetry', function(data) {
+            let chartData = telemetryChart.data.datasets[0].data;
+            
+            // Shift data left and add the new reading
+            chartData.push(data.msg_per_sec);
+            chartData.shift();
+            
+            // Dynamically scale the Y-Axis if packet rate spikes
+            let currentMax = Math.max(...chartData);
+            if (currentMax > telemetryChart.options.scales.y.max) {
+                telemetryChart.options.scales.y.max = currentMax + 2;
+            } else if (currentMax < 5) {
+                telemetryChart.options.scales.y.max = 5;
+            }
+            
+            telemetryChart.update();
+        });
+
+        // ==========================================
+        // 🚪 NODE 1: GATE (WITH UI PROTECTION)
+        // ==========================================
+        let gateResetTimer;
+
+        socket.on('gate_data', function(data) {
+            let log = document.getElementById('gate-log');
+            let isAlert = data.msg.includes("ALERT") || data.msg.includes("DENIED") || data.msg.includes("WARNING");
+            let newEntry = `<div class="terminal-line ${isAlert ? 'alert-text' : ''}">> ${data.msg}</div>`;
+            
+            // 1. Prepend the new log entry
+            log.innerHTML = newEntry + log.innerHTML; 
+            
+            // 2. BULLETPROOF UI: Restrict to 6 lines to prevent pushing Zone Data off-screen
+            let lines = log.getElementsByClassName('terminal-line');
+            if (lines.length > 6) {
+                log.removeChild(lines[lines.length - 1]);
+            }
+
+            // 3. THE 5-SECOND RESET
+            clearTimeout(gateResetTimer);
+            gateResetTimer = setTimeout(() => {
+                log.innerHTML = `<div class="terminal-line" style="color: #66ccff;">> Terminal cleared... awaiting scan.</div>`;
+            }, 5000);
+            
+            // 4. Map Alert Animation
+            if(isAlert) {
                 let gateNode = document.getElementById('node-gate');
                 let gateStatus = document.getElementById('map-gate-status');
                 gateNode.classList.add('node-alert-state');
                 gateStatus.innerText = 'BREACH';
-                setTimeout(() => {
-                    gateNode.classList.remove('node-alert-state');
-                    gateStatus.innerText = 'SECURE';
+                setTimeout(() => { 
+                    gateNode.classList.remove('node-alert-state'); 
+                    gateStatus.innerText = 'SECURE'; 
                 }, 5000);
             }
         });
 
-        // NODE 2: ZONE 1 (Super Node Logic)
-        socket.on('zone_data', function (data) {
+        // ==========================================
+        // 🌳 NODE 2: ZONE 1
+        // ==========================================
+        socket.on('zone_data', function(data) {
             document.getElementById('z-temp').innerText = data.temp;
             document.getElementById('z-hum').innerText = data.hum;
             document.getElementById('z-light').innerText = data.light;
-
+            
             document.getElementById('bar-temp').style.width = Math.min((data.temp / 50) * 100, 100) + '%';
             document.getElementById('bar-hum').style.width = Math.min((data.hum / 100) * 100, 100) + '%';
             document.getElementById('bar-light').style.width = Math.min((data.light / 4095) * 100, 100) + '%';
@@ -647,8 +346,10 @@
             }
         });
 
-        // NODE 3: TRAFFIC
-        socket.on('traffic_data', function (data) {
+        // ==========================================
+        // 🚦 NODE 3: TRAFFIC
+        // ==========================================
+        socket.on('traffic_data', function(data) {
             let l1 = document.getElementById('t-lane1');
             l1.innerText = data.lane1;
             l1.style.color = data.lane1.includes("WAITING") ? "#ff0000" : "#00ffff";
@@ -660,11 +361,11 @@
             document.getElementById('t-light').innerText = data.light;
         });
 
-        socket.on('traffic_alert', function (data) {
+        socket.on('traffic_alert', function(data) {
             let trafficNode = document.getElementById('node-traffic');
             let trafficStatus = document.getElementById('map-traffic-status');
-
-            if (data.msg.includes("CLEARED")) {
+            
+            if(data.msg.includes("CLEARED")) {
                 trafficNode.classList.remove('node-alert-state');
                 trafficStatus.innerText = 'NORMAL';
             } else {
@@ -673,11 +374,13 @@
             }
         });
 
-        // NODE 4: PARKING
-        socket.on('parking_data', function (data) {
+        // ==========================================
+        // 🅿️ NODE 4: PARKING
+        // ==========================================
+        socket.on('parking_data', function(data) {
             document.getElementById('p-free').innerText = data.free;
             document.getElementById('p-light').innerText = data.light;
-
+            
             document.getElementById('p-1').innerText = data.p1;
             document.getElementById('p-box-1').className = data.p1 === "FREE" ? "parking-spot free" : "parking-spot occupied";
 
@@ -686,5 +389,4 @@
         });
     </script>
 </body>
-
 </html>
