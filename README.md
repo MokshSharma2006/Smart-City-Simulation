@@ -154,7 +154,7 @@ Wired in series with the cathode leg of all Traffic Light and Parking Indicator 
 | DHT11 | Data (OUT) | GPIO 1 | Digital input |
 | LDR | AO (Analog Out) | GPIO 0 (A0) | Safe ADC1 channel |
 | IR Tripwire | OUT / DO | GPIO 3 | Safe digital input |
-| PIR Motion | OUT / Data | GPIO 4 | Safe digital input |
+| PIR Motion | OUT / Data | GPIO 4 | Use 5v VCC |
 
 ### Node 03 — Traffic Junction (Uno R4 WiFi)
 
