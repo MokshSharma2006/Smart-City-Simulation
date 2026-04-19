@@ -145,6 +145,7 @@ Wired in series with the cathode leg of all Traffic Light and Parking Indicator 
 | RFID RC522 | RST / VCC | D22 / 3V3 | **3.3V only — 5V will damage the module** |
 | Servo Motor | Signal / VCC | D13 / VIN (5V) | Requires 5V for actuation |
 | PIR Motion | OUT / Data | D27 | Safe digital input |
+| HCSR04 | TRIG/ECHO | D13/D12 | Detect Vehicles |
 
 ### Node 02 — Perimeter Zone (ESP32-C3)
 
