@@ -35,7 +35,7 @@ All telemetry is secured with **AES-128-CBC encryption**, **HMAC-SHA256 authenti
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Architecture / Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -50,6 +50,7 @@ All telemetry is secured with **AES-128-CBC encryption**, **HMAC-SHA256 authenti
     │   ESP32    │  │  ESP32-C3  │  │ Uno R4 WiFi│  │  ESP8266     │
     └────────────┘  └────────────┘  └────────────┘  └──────────────┘
 ```
+<img width="477" height="350" alt="Flowchart" src="https://github.com/user-attachments/assets/a208a4c6-10e6-4147-a8f1-076e59dc0394" />
 
 ### 📁 Project File Structure
 
