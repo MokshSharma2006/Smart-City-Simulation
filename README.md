@@ -270,7 +270,7 @@ C://
 │   └── Arduino            
 │
 ├── liabraries/
-│   └── PASTE ALL THE FOLDERS FROM THE EXTRACTED LIABRARIE FOLDER
+│   └── PASTE ALL THE FOLDERS FROM THE EXTRACTED LIBRARIES FOLDER
 
 ```
 
