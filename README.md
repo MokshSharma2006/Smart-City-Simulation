@@ -253,7 +253,7 @@ sudo systemctl restart mosquitto
 ```bash
 python3 -m venv env
 source env/bin/activate
-pip install paho-mqtt pycryptodome flask flask-socketio
+pip3 install -r requirements.txt
 ```
 
 ### 4. Install Custom Libraries
