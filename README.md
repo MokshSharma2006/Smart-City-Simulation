@@ -21,8 +21,6 @@ This project is a comprehensive, end-to-end demonstration of a **Decentralized P
 
 All telemetry is secured with **AES-128-CBC encryption**, **HMAC-SHA256 authentication**, and replay-attack prevention via incrementing nonces — before being streamed live to a sci-fi HUD dashboard running on a central Raspberry Pi 5 command center.
 
-> Built by **Moksh Sharma**
-
 ---
 
 ## ✨ Core Features
