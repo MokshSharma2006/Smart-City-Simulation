@@ -1,7 +1,7 @@
-pip install pycryptodome
+pycryptodome
 
-pip install paho-mqtt
+paho-mqtt
 
-pip install Flask
+Flask
 
-pip install Flask-SocketIO
+Flask-SocketIO
