@@ -12,7 +12,7 @@
 
 const char* ssid        = "YOUR_WIFI_SSID";
 const char* password    = "YOUR_WIFI_PASSKEY";
-const char* mqtt_server = "RASPBERRY_PI_IP"; 
+const char* mqtt_server = "RASPBERRY_PI_IP";
 
 const char* key_char = "1234567890123456"; 
 const char* iv_char  = "abcdefghijklmnop"; 
@@ -36,7 +36,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define RED2_PIN   D3
 #define GREEN2_PIN D4
 
-#define LDR_PIN D0
+#define LDR_PIN A0  // FIX: was D0 — LDR is analog and must use A0 on ESP8266
 
 unsigned long lastTelemetryTime = 0;
 
@@ -80,6 +80,7 @@ void sendSecureMessage(const String& topic, const String& message) {
   cbc.setKey((const uint8_t*)key_char, 16);
   cbc.setIV((const uint8_t*)iv_char, 16);
   cbc.encrypt(encryptedBytes, paddedMsg, paddedLen);
+  yield(); // FIX: yield after heavy crypto so WiFi stack gets CPU time
 
   String encB64 = base64Encode(encryptedBytes, paddedLen);
   String dataToSign = String(message_nonce) + ":" + encB64;
@@ -96,6 +97,7 @@ void sendSecureMessage(const String& topic, const String& message) {
   sha256.update(dataToSign.c_str(), dataToSign.length());
   byte innerHash[32];
   sha256.finalize(innerHash, 32);
+  yield(); // FIX: yield again after second SHA256 pass
 
   sha256.reset();
   sha256.update(opad, 64);
@@ -109,6 +111,22 @@ void sendSecureMessage(const String& topic, const String& message) {
     signature += String(finalHash[i], HEX);
   }
   client.publish(topic.c_str(), (dataToSign + ":" + signature).c_str());
+}
+
+// FIX: Extracted reconnect into a function with a delay on failure.
+// The original had no delay on failed connect, causing a tight loop that
+// starved the ESP8266 WiFi stack and caused dashboard lag.
+void reconnectMQTT() {
+  if (client.connected()) return;
+  Serial.print("[MQTT] Reconnecting...");
+  if (client.connect("ESP8266-ParkingNode")) {
+    Serial.println(" ✅ Connected!");
+  } else {
+    Serial.print(" ❌ Failed (rc=");
+    Serial.print(client.state());
+    Serial.println("). Retrying in 3s...");
+    delay(3000); // FIX: was missing — without this, failed reconnect spins tightly
+  }
 }
 
 // Setup
@@ -135,21 +153,25 @@ void setup() {
   display.println("BOOTING...");
   display.display();
 
+  Serial.print("[WiFi] Connecting");
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n[WiFi] ✅ Connected! IP: " + WiFi.localIP().toString());
   
   client.setServer(mqtt_server, 1883);
+  client.setSocketTimeout(5); // FIX: limit socket wait to 5s (default is 15s — was causing lag spikes)
 }
 
 // Main Loop
 
 void loop() {
-  if (!client.connected()) {
-    if (client.connect("ESP8266-ParkingNode")) {
-      Serial.println("✅ Connected to MQTT!");
-    }
-  }
+  // FIX: Use the proper reconnect function with delay on failure
+  reconnectMQTT();
   client.loop();
+  yield(); // FIX: explicit yield after client.loop() — critical on ESP8266 to service WiFi
 
   // READ SENSORS (Assuming LOW = Car Present)
   int ir1 = digitalRead(IR1_PIN);
@@ -214,4 +236,8 @@ void loop() {
     Serial.println("📡 Beaming: " + payload);
     sendSecureMessage("city/parking/status", payload);
   }
+
+  // FIX: Small delay each loop iteration so ESP8266 background WiFi tasks
+  // (TCP ACKs, keepalives) are not starved. 10ms is negligible for a 5s telemetry node.
+  delay(10);
 }
