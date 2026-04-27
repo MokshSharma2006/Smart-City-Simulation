@@ -9,9 +9,9 @@
 
 // Wifi-Connectivity
 
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSKEY";
-const char* mqtt_server = "RASPBERRY_PI_IP"; 
+const char* ssid        = "YOUR_WIFI_SSID";
+const char* password    = "YOUR_WIFI_PASSKEY";
+const char* mqtt_server = "RASPBERRY_PI_IP";
 
 const char* key_char = "1234567890123456"; 
 const char* iv_char  = "abcdefghijklmnop"; 
@@ -47,7 +47,7 @@ unsigned long lastSensorCheck = 0;
 bool carWasPresent = false;
 bool motionWasPresent = false;
 
-// IR Tripwire States
+// NEW: IR Tripwire States
 unsigned long lastIrTrigger = 0;
 bool irWasTriggered = false;
 
