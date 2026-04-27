@@ -59,14 +59,12 @@ unsigned long lastTelemetryTime  = 0;
 unsigned long lastSoundCheckTime = 0;
 
 // Sound Sensor Filters
-
 bool          inEmergencyCooldown    = false;
 unsigned long emergencyCooldownStart = 0;
 
-
 int soundTriggerCount = 0;
-const int SOUND_CONFIRM_THRESHOLD    = 1;    // 4 × 50ms = 200ms sustained
-const unsigned long EMERGENCY_COOLDOWN_MS = 15000UL;
+const int SOUND_CONFIRM_THRESHOLD    = 6;      // FIX: was 1 (caused false alarms) → now 6 × 50ms = 300ms sustained
+const unsigned long EMERGENCY_COOLDOWN_MS = 30000UL; // FIX: was 15000 → now 30s
 
 // Base64 Encoder
 
@@ -217,7 +215,7 @@ void changeState(TrafficState newState, unsigned long duration) {
 void setup() {
   Serial.begin(115200);
   delay(1500);
-  Serial.println("\n🚦 BOOTING TRAFFIC NODE v2.1...");
+  Serial.println("\n🚦 BOOTING TRAFFIC NODE v2.2...");
 
   pinMode(RED_PIN,    OUTPUT);
   pinMode(YELLOW_PIN, OUTPUT);
@@ -254,20 +252,21 @@ void loop() {
   reconnectMQTT();
   client.loop();
 
-
-  // A. REead Sensor Once — reused in all sections below
-
+  // ----------------------------------------------------------------
+  // A. READ SENSORS ONCE — reused in all sections below
+  // ----------------------------------------------------------------
   int lightLevel = analogRead(LDR_PIN);
   int ir1        = digitalRead(IR1_PIN);
   int ir2        = digitalRead(IR2_PIN);
 
-  
-  // B. Adaptive Display Brightness — runs every loop
+  // ----------------------------------------------------------------
+  // B. ADAPTIVE DISPLAY BRIGHTNESS — runs every loop
+  // ----------------------------------------------------------------
   display.setBrightness(lightLevel < 300 ? 1 : 7);
 
-  
-  // C. Telemetry — every 10 seconds
-  
+  // ----------------------------------------------------------------
+  // C. TELEMETRY — every 10 seconds
+  // ----------------------------------------------------------------
   if (millis() - lastTelemetryTime >= 10000) {
     lastTelemetryTime = millis();
     String envData = "ENV:L:" + String(lightLevel)
@@ -277,30 +276,33 @@ void loop() {
     sendSecureMessage("city/traffic/status", envData);
   }
 
-  
-  // D. Emergency Cooldown Expiry
-  
+  // ----------------------------------------------------------------
+  // D. EMERGENCY COOLDOWN EXPIRY
+  // ----------------------------------------------------------------
   if (inEmergencyCooldown &&
       millis() - emergencyCooldownStart >= EMERGENCY_COOLDOWN_MS) {
     inEmergencyCooldown = false;
     Serial.println("✅ Cooldown expired — siren detection re-armed.");
   }
 
-
-  // E. Analog Sound Sensor — Reads raw volume (0 to 1023)
-  
+  // ----------------------------------------------------------------
+  // E. ANALOG SOUND SENSOR — Reads raw volume (0 to 1023)
+  //    FIX: SOUND_CONFIRM_THRESHOLD raised from 1 → 6.
+  //    Each sample is 50ms. 6 samples = 300ms sustained sound required.
+  //    This eliminates brief environmental spikes causing false alarms.
+  // ----------------------------------------------------------------
   if (millis() - lastSoundCheckTime >= 50) {
     lastSoundCheckTime = millis();
 
     int currentVolume = analogRead(SOUND_PIN);
     
     // Un-comment the line below if you need to see the raw numbers to calibrate it!
-     Serial.println("Volume: " + String(currentVolume)); 
+    // Serial.println("Volume: " + String(currentVolume)); 
 
     if (currentVolume > SOUND_THRESHOLD) {
-      soundTriggerCount++;          // Volume spiked above threshold
+      soundTriggerCount++;
     } else {
-      soundTriggerCount = 0;        // Volume is normal
+      soundTriggerCount = 0; // Reset on ANY quiet sample — must be consecutive
     }
   }
 
@@ -315,9 +317,9 @@ void loop() {
   }
 
 
-  
-  // F. Countdown Display — updates only when second changes
-  
+  // ----------------------------------------------------------------
+  // F. COUNTDOWN DISPLAY — updates only when second changes
+  // ----------------------------------------------------------------
   unsigned long elapsed        = millis() - stateStartTime;
   int           remainingSec   = (int)((stateDuration - elapsed) / 1000);
   if (remainingSec < 0) remainingSec = 0;
@@ -328,7 +330,7 @@ void loop() {
   }
 
   // ----------------------------------------------------------------
-  // G. State Transitions — fires once elapsed >= duration
+  // G. STATE TRANSITIONS — fires once elapsed >= duration
   //    Cycle: GREEN(60s) → YELLOW(10s) → RED(60s) → GREEN(60s) ...
   // ----------------------------------------------------------------
   if (elapsed >= stateDuration) {
