@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart City Command</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cyan:    #00e5ff;
+            --green:   #00ff88;
+            --red:     #ff3355;
+            --yellow:  #ffcc00;
+            --bg:      #040d14;
+            --panel:   rgba(0, 229, 255, 0.04);
+            --border:  rgba(0, 229, 255, 0.18);
+            --text:    #cce8f0;
+            --dim:     #5a8a99;
+            --font-ui: 'Rajdhani', sans-serif;
+            --font-mono: 'Share Tech Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--cyan);
+            font-family: var(--font-ui);
+            font-size: 14px;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ─── animated scanline overlay ─── */
+        body::before {
+            content: '';
+            position: fixed; inset: 0; z-index: 999; pointer-events: none;
+            background: repeating-linear-gradient(0deg,
+                transparent,
+                transparent 3px,
+                rgba(0,229,255,0.015) 3px,
+                rgba(0,229,255,0.015) 4px
+            );
+        }
+
+        /* ─── layout ─── */
+        .shell {
+            width: 100vw; height: 100vh;
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            grid-template-rows: 54px 1fr 180px;
+            gap: 14px;
+            padding: 14px;
+        }
+
+        /* ─── header ─── */
+        .topbar {
+            grid-column: 1 / -1;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .topbar-title {
+            font-size: 20px; font-weight: 700; letter-spacing: 5px;
+            text-transform: uppercase; color: var(--cyan);
+            text-shadow: 0 0 20px var(--cyan);
+        }
+        .topbar-meta {
+            font-family: var(--font-mono); font-size: 11px; color: var(--dim);
+            display: flex; gap: 28px;
+        }
+        .topbar-meta span { color: var(--cyan); }
+        .status-dot {
+            display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+            background: var(--green); margin-right: 6px;
+            box-shadow: 0 0 6px var(--green);
+            animation: blink 2s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        /* ─── columns ─── */
+        .left-col  { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 14px; }
+        .center-col{ grid-column: 2; grid-row: 2; position: relative; }
+        .right-col { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; gap: 14px; }
+        .bottom-row{ grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: 260px 1fr 260px; gap: 14px; }
+
+        /* ─── panel ─── */
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 14px;
+            overflow: hidden;
+            position: relative;
+        }
+        .panel::before {
+            content: ''; position: absolute; top: 0; left: 0;
+            width: 3px; height: 100%;
+            background: linear-gradient(180deg, var(--cyan), transparent);
+        }
+        .panel-title {
+            font-size: 10px; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--dim);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px; margin-bottom: 12px;
+        }
+        .panel-title span { color: var(--cyan); margin-right: 8px; }
+
+        /* ─── terminal log ─── */
+        .terminal { flex: 1; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; color: #88ccdd; line-height: 1.7; }
+        .terminal::-webkit-scrollbar { width: 4px; }
+        .terminal::-webkit-scrollbar-thumb { background: var(--border); }
+        .t-line { padding-left: 10px; border-left: 2px solid rgba(0,229,255,0.25); margin-bottom: 3px; }
+        .t-line.ok  { border-left-color: var(--green); color: #99ffcc; }
+        .t-line.err { border-left-color: var(--red);   color: var(--red); text-shadow: 0 0 6px var(--red); }
+        .t-line.dim { color: var(--dim); border-left-color: transparent; }
+
+        /* ─── sensor bars ─── */
+        .sensor-row { margin-bottom: 10px; }
+        .sensor-header {
+            display: flex; justify-content: space-between;
+            font-size: 11px; color: var(--dim); text-transform: uppercase;
+            letter-spacing: 1px; margin-bottom: 4px;
+        }
+        .sensor-header .val { font-family: var(--font-mono); color: var(--text); }
+        .bar-track { height: 4px; background: rgba(0,229,255,0.08); border-radius: 2px; }
+        .bar-fill  { height: 4px; border-radius: 2px; transition: width 0.6s ease;
+                     background: linear-gradient(90deg, var(--cyan), var(--green));
+                     box-shadow: 0 0 6px var(--cyan); }
+
+        /* ─── status badges ─── */
+        .badge-row { display: flex; gap: 8px; margin-top: 4px; }
+        .badge {
+            flex: 1; padding: 8px; border-radius: 3px;
+            border: 1px solid var(--border);
+            background: rgba(0,229,255,0.04);
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .badge-label { font-size: 9px; color: var(--dim); letter-spacing: 2px; display: block; margin-bottom: 4px; }
+        .badge-val   { font-family: var(--font-mono); font-size: 12px; color: var(--cyan); }
+        .badge.alert { border-color: var(--red); background: rgba(255,51,85,0.08); }
+        .badge.alert .badge-val { color: var(--red); text-shadow: 0 0 8px var(--red); }
+
+        /* ─── traffic status ─── */
+        .lane-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .lane-box {
+            border: 1px solid var(--border); border-radius: 3px;
+            padding: 10px 8px; text-align: center; background: rgba(0,229,255,0.03);
+        }
+        .lane-box .lane-label { font-size: 9px; color: var(--dim); letter-spacing: 2px; }
+        .lane-box .lane-val   { font-family: var(--font-mono); font-size: 13px; font-weight: 700; margin-top: 4px; }
+        .lane-box.waiting .lane-val { color: var(--red); text-shadow: 0 0 8px var(--red); }
+        .lane-box.clear   .lane-val { color: var(--green); text-shadow: 0 0 6px var(--green); }
+
+        /* ─── parking ─── */
+        .free-count {
+            font-size: 38px; font-weight: 700; text-align: center;
+            color: var(--green); text-shadow: 0 0 20px var(--green);
+            margin: 8px 0;
+        }
+        .free-label { text-align: center; font-size: 10px; color: var(--dim); letter-spacing: 3px; margin-bottom: 10px; }
+        .spot-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 10px; border-radius: 3px; margin-bottom: 6px;
+            border-left: 3px solid var(--green);
+            background: rgba(0,255,136,0.04);
+            transition: all 0.3s;
+        }
+        .spot-row.occupied { border-left-color: var(--red); background: rgba(255,51,85,0.04); }
+        .spot-name { font-size: 12px; font-weight: 700; color: var(--text); }
+        .spot-status { font-family: var(--font-mono); font-size: 12px; color: var(--green); }
+        .spot-row.occupied .spot-status { color: var(--red); }
+
+        /* ─── center map ─── */
+        .map-area {
+            width: 100%; height: 100%; position: relative;
+            border: 1px solid var(--border); border-radius: 4px;
+            background: radial-gradient(ellipse at 50% 50%, rgba(0,229,255,0.04) 0%, transparent 65%);
+            overflow: hidden;
+        }
+        .map-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+        .map-rings { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+                     width: min(55%, 260px); aspect-ratio: 1; z-index: 2; pointer-events: none; }
+        .ring {
+            position: absolute; inset: 0; border-radius: 50%;
+            border: 1px solid transparent;
+        }
+        .ring-a { border-top-color: rgba(0,229,255,0.5); border-bottom-color: rgba(0,229,255,0.5);
+                  animation: spin 14s linear infinite; }
+        .ring-b { inset: 12%; border-left-color: rgba(0,229,255,0.25); border-right-color: rgba(0,229,255,0.25);
+                  animation: spin 22s linear infinite reverse; }
+        .ring-c { inset: 24%; border-top-color: rgba(0,229,255,0.6);
+                  animation: spin 9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .core {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            z-index: 4;
+            width: 88px; height: 88px; border-radius: 50%;
+            border: 2px solid var(--cyan);
+            background: rgba(0,20,30,0.85);
+            box-shadow: 0 0 28px var(--cyan), inset 0 0 18px rgba(0,229,255,0.3);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .core-title { font-size: 12px; font-weight: 700; text-shadow: 0 0 8px var(--cyan); }
+        .core-sub   { font-family: var(--font-mono); font-size: 9px; color: var(--dim); margin-top: 3px; }
+
+        .map-node {
+            position: absolute; z-index: 4;
+            transform: translate(-50%,-50%);
+            background: rgba(4,13,20,0.88);
+            border: 1px solid var(--cyan);
+            border-radius: 3px;
+            padding: 8px 14px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,229,255,0.2);
+            transition: all 0.4s ease;
+            backdrop-filter: blur(4px);
+        }
+        .node-label  { font-size: 9px; color: var(--dim); letter-spacing: 2px; display: block; margin-bottom: 3px; }
+        .node-status { font-family: var(--font-mono); font-size: 12px; color: var(--cyan); }
+        .map-node.alert {
+            border-color: var(--red);
+            background: rgba(50,0,10,0.9);
+            box-shadow: 0 0 22px rgba(255,51,85,0.5);
+            animation: node-pulse 0.8s ease-in-out infinite;
+        }
+        .map-node.alert .node-status { color: var(--red); text-shadow: 0 0 8px var(--red); }
+        @keyframes node-pulse {
+            0%,100% { transform: translate(-50%,-50%) scale(1); }
+            50%      { transform: translate(-50%,-50%) scale(1.06); }
+        }
+
+        /* node positions */
+        #n-gate    { top: 22%; left: 22%; }
+        #n-zone    { top: 78%; left: 22%; }
+        #n-traffic { top: 22%; left: 78%; }
+        #n-parking { top: 78%; left: 78%; }
+
+        /* ─── bottom panels ─── */
+        .crypto-info { font-family: var(--font-mono); font-size: 10px; color: var(--dim); line-height: 2; }
+        .crypto-info .ok { color: var(--green); }
+
+        .uptime-display {
+            font-family: var(--font-mono); font-size: 30px; text-align: center;
+            color: var(--cyan); text-shadow: 0 0 14px var(--cyan);
+            margin-top: 12px; letter-spacing: 4px;
+        }
+        .uptime-label { text-align: center; font-size: 9px; color: var(--dim); letter-spacing: 3px; margin-top: 4px; }
+        .cyber-chart  { width: 100%; height: 75%; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<div class="shell">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-title">
+            <span class="status-dot"></span>SMART CITY COMMAND
+        </div>
+        <div class="topbar-meta">
+            <div>ENCRYPTION <span>AES-128-CBC</span></div>
+            <div>AUTH <span>HMAC-SHA256</span></div>
+            <div>BROKER <span>localhost:1883</span></div>
+            <div>NODES <span>4 / 4</span></div>
+        </div>
+    </div>
+
+    <!-- LEFT COLUMN -->
+    <div class="left-col">
+
+        <!-- Gate Log -->
+        <div class="panel" style="flex:1; display:flex; flex-direction:column;">
+            <div class="panel-title"><span>◈</span> NODE 01 — ACCESS GATE</div>
+            <div class="terminal" id="gate-log">
+                <div class="t-line dim">> System armed. Awaiting scan...</div>
+            </div>
+        </div>
+
+        <!-- Zone Sensors -->
+        <div class="panel">
+            <div class="panel-title"><span>◈</span> NODE 02 — PERIMETER ZONE</div>
+
+            <div class="sensor-row">
+                <div class="sensor-header"><span>Temperature</span><span class="val"><span id="z-temp">—</span> °C</span></div>
+                <div class="bar-track"><div class="bar-fill" id="bar-temp" style="width:0%"></div></div>
+            </div>
+            <div class="sensor-row">
+                <div class="sensor-header"><span>Humidity</span><span class="val"><span id="z-hum">—</span> %</span></div>
+                <div class="bar-track"><div class="bar-fill" id="bar-hum" style="width:0%"></div></div>
+            </div>
+            <div class="sensor-row" style="margin-bottom:12px;">
+                <div class="sensor-header"><span>Ambient Light</span><span class="val" id="z-light">—</span></div>
+                <div class="bar-track"><div class="bar-fill" id="bar-light" style="width:0%"></div></div>
+            </div>
+
+            <div class="badge-row">
+                <div class="badge" id="badge-pir">
+                    <span class="badge-label">PIR MOTION</span>
+                    <div class="badge-val" id="z-pir">AWAITING</div>
+                </div>
+                <div class="badge" id="badge-ir">
+                    <span class="badge-label">IR TRIPWIRE</span>
+                    <div class="badge-val" id="z-ir">AWAITING</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CENTER MAP -->
+    <div class="center-col">
+        <div class="map-area">
+            <!-- SVG network lines -->
+            <svg class="map-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <line x1="22" y1="22" x2="50" y2="50" stroke="rgba(0,229,255,0.3)" stroke-width="0.4" stroke-dasharray="3 3">
+                    <animate attributeName="stroke-dashoffset" from="0" to="-100" dur="8s" repeatCount="indefinite"/>
+                </line>
+                <line x1="22" y1="78" x2="50" y2="50" stroke="rgba(0,229,255,0.3)" stroke-width="0.4" stroke-dasharray="3 3">
+                    <animate attributeName="stroke-dashoffset" from="0" to="-100" dur="11s" repeatCount="indefinite"/>
+                </line>
+                <line x1="78" y1="22" x2="50" y2="50" stroke="rgba(0,229,255,0.3)" stroke-width="0.4" stroke-dasharray="3 3">
+                    <animate attributeName="stroke-dashoffset" from="0" to="-100" dur="9s" repeatCount="indefinite"/>
+                </line>
+                <line x1="78" y1="78" x2="50" y2="50" stroke="rgba(0,229,255,0.3)" stroke-width="0.4" stroke-dasharray="3 3">
+                    <animate attributeName="stroke-dashoffset" from="0" to="-100" dur="13s" repeatCount="indefinite"/>
+                </line>
+            </svg>
+
+            <!-- Rings -->
+            <div class="map-rings">
+                <div class="ring ring-a"></div>
+                <div class="ring ring-b"></div>
+                <div class="ring ring-c"></div>
+            </div>
+
+            <!-- Core node -->
+            <div class="core">
+                <div class="core-title">RPI 5</div>
+                <div class="core-sub">MQTT CORE</div>
+            </div>
+
+            <!-- Peripheral nodes -->
+            <div class="map-node" id="n-gate">
+                <span class="node-label">ESP32 · GATE</span>
+                <div class="node-status" id="ns-gate">SECURE</div>
+            </div>
+            <div class="map-node" id="n-zone">
+                <span class="node-label">ESP32-C3 · ZONE</span>
+                <div class="node-status" id="ns-zone">SECURE</div>
+            </div>
+            <div class="map-node" id="n-traffic">
+                <span class="node-label">UNO R4 · TRAFFIC</span>
+                <div class="node-status" id="ns-traffic">NORMAL</div>
+            </div>
+            <div class="map-node" id="n-parking">
+                <span class="node-label">ESP8266 · PARKING</span>
+                <div class="node-status" id="ns-parking">ONLINE</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-col">
+
+        <!-- Traffic -->
+        <div class="panel">
+            <div class="panel-title"><span>◈</span> NODE 03 — TRAFFIC JUNCTION</div>
+            <div class="lane-grid">
+                <div class="lane-box" id="lane-box-1">
+                    <div class="lane-label">LANE 1 IR</div>
+                    <div class="lane-val" id="t-lane1">AWAIT</div>
+                </div>
+                <div class="lane-box" id="lane-box-2">
+                    <div class="lane-label">LANE 2 IR</div>
+                    <div class="lane-val" id="t-lane2">AWAIT</div>
+                </div>
+            </div>
+            <div style="font-size:10px; color:var(--dim); letter-spacing:2px; text-transform:uppercase;">
+                Ambient Light
+                <span style="font-family:var(--font-mono); color:var(--text); float:right;" id="t-light">—</span>
+            </div>
+        </div>
+
+        <!-- Parking -->
+        <div class="panel" style="flex:1;">
+            <div class="panel-title"><span>◈</span> NODE 04 — SMART PARKING</div>
+            <div class="free-count" id="p-free">—</div>
+            <div class="free-label">SPACES AVAILABLE / 2</div>
+
+            <div class="spot-row free" id="p-box-1">
+                <span class="spot-name">TERMINAL 1</span>
+                <span class="spot-status" id="p-1">SYNCING</span>
+            </div>
+            <div class="spot-row free" id="p-box-2">
+                <span class="spot-name">TERMINAL 2</span>
+                <span class="spot-status" id="p-2">SYNCING</span>
+            </div>
+
+            <div style="margin-top:10px; font-size:10px; color:var(--dim); letter-spacing:2px; text-transform:uppercase;">
+                Deck Lighting
+                <span style="font-family:var(--font-mono); color:var(--text); float:right;" id="p-light">—</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM ROW -->
+    <div class="bottom-row">
+
+        <div class="panel" style="display:flex; flex-direction:column; justify-content:center;">
+            <div class="panel-title"><span>◈</span> SECURITY LAYER</div>
+            <div class="crypto-info">
+                <div>CIPHER &nbsp;&nbsp;<span class="ok">AES-128-CBC ✓</span></div>
+                <div>AUTH &nbsp;&nbsp;&nbsp;&nbsp;<span class="ok">HMAC-SHA256 ✓</span></div>
+                <div>NONCE &nbsp;&nbsp;&nbsp;<span class="ok">ANTI-REPLAY ✓</span></div>
+                <div>NODES &nbsp;&nbsp;&nbsp;<span class="ok">4 SECURED ✓</span></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title"><span>◈</span> NETWORK TELEMETRY — PKT/SEC</div>
+            <div class="cyber-chart">
+                <canvas id="telemetryChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel" style="display:flex; flex-direction:column; justify-content:center;">
+            <div class="panel-title"><span>◈</span> SYSTEM UPTIME</div>
+            <div class="uptime-display" id="uptime">00:00:00</div>
+            <div class="uptime-label">HH : MM : SS</div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+var socket = io();
+
+// ── Uptime ──
+let sec = 0;
+setInterval(() => {
+    sec++;
+    let h = String(Math.floor(sec/3600)).padStart(2,'0');
+    let m = String(Math.floor((sec%3600)/60)).padStart(2,'0');
+    let s = String(sec%60).padStart(2,'0');
+    document.getElementById('uptime').innerText = `${h}:${m}:${s}`;
+}, 1000);
+
+// ── Telemetry Chart ──
+const ctx = document.getElementById('telemetryChart').getContext('2d');
+const telemetryChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: Array(20).fill(''),
+        datasets: [{
+            data: Array(20).fill(0),
+            borderColor: '#00e5ff',
+            backgroundColor: 'rgba(0,229,255,0.07)',
+            borderWidth: 1.5,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 0 },
+        scales: {
+            y: {
+                beginAtZero: true, max: 5,
+                ticks: { color: '#5a8a99', stepSize: 1, font: { family: 'Share Tech Mono', size: 10 } },
+                grid: { color: 'rgba(0,229,255,0.07)' }
+            },
+            x: { display: false }
+        },
+        plugins: { legend: { display: false } }
+    }
+});
+
+socket.on('network_telemetry', function(data) {
+    let d = telemetryChart.data.datasets[0].data;
+    d.push(data.msg_per_sec); d.shift();
+    let mx = Math.max(...d);
+    telemetryChart.options.scales.y.max = mx < 5 ? 5 : mx + 2;
+    telemetryChart.update();
+});
+
+// ══════════════════════════════════════════
+// NODE 1: GATE (ESP32)
+// FIX: expanded routing now sends {msg, alert} — use alert flag for styling
+// ══════════════════════════════════════════
+let gateResetTimer;
+
+socket.on('gate_data', function(data) {
+    let log = document.getElementById('gate-log');
+    let cls = data.alert ? 'err' : (data.msg.includes('GRANTED') ? 'ok' : '');
+    let line = `<div class="t-line ${cls}">> ${data.msg}</div>`;
+    log.innerHTML = line + log.innerHTML;
+
+    // Keep max 6 lines
+    let lines = log.querySelectorAll('.t-line');
+    if (lines.length > 6) lines[lines.length - 1].remove();
+
+    // Auto-clear after 6s
+    clearTimeout(gateResetTimer);
+    gateResetTimer = setTimeout(() => {
+        log.innerHTML = '<div class="t-line dim">> Terminal cleared... awaiting scan.</div>';
+    }, 6000);
+
+    // Map node alert
+    if (data.alert) {
+        setNodeAlert('n-gate', 'ns-gate', 'BREACH');
+        setTimeout(() => clearNodeAlert('n-gate', 'ns-gate', 'SECURE'), 6000);
+    }
+});
+
+// FIX: new event — server sends this when tripwire clears so map node resets immediately
+socket.on('gate_alert_clear', function() {
+    clearNodeAlert('n-gate', 'ns-gate', 'SECURE');
+});
+
+// ══════════════════════════════════════════
+// NODE 2: ZONE (ESP32-C3)
+// FIX: added auto-clear timeout so IR/PIR don't stay stuck in alert state
+// ══════════════════════════════════════════
+let zoneAlertTimer;
+
+socket.on('zone_data', function(data) {
+    document.getElementById('z-temp').innerText  = data.temp;
+    document.getElementById('z-hum').innerText   = data.hum;
+    document.getElementById('z-light').innerText = data.light;
+
+    document.getElementById('bar-temp').style.width  = Math.min((data.temp / 50) * 100, 100) + '%';
+    document.getElementById('bar-hum').style.width   = Math.min((data.hum / 100) * 100, 100) + '%';
+    document.getElementById('bar-light').style.width = Math.min((data.light / 4095) * 100, 100) + '%';
+
+    // PIR badge
+    let pirBadge = document.getElementById('badge-pir');
+    let pirVal   = document.getElementById('z-pir');
+    pirVal.innerText = data.pir;
+    pirBadge.classList.toggle('alert', data.pir.includes('MOTION'));
+
+    // IR badge
+    let irBadge = document.getElementById('badge-ir');
+    let irVal   = document.getElementById('z-ir');
+    irVal.innerText = data.ir;
+    irBadge.classList.toggle('alert', data.ir.includes('TRIGGERED'));
+
+    let isAlert = data.pir.includes('MOTION') || data.ir.includes('TRIGGERED');
+
+    if (isAlert) {
+        setNodeAlert('n-zone', 'ns-zone', 'INTRUSION');
+        // FIX: auto-clear after 8s if no new alert packet arrives
+        // This prevents the badge from staying stuck when sensors go quiet
+        clearTimeout(zoneAlertTimer);
+        zoneAlertTimer = setTimeout(() => {
+            clearNodeAlert('n-zone', 'ns-zone', 'SECURE');
+            pirBadge.classList.remove('alert');
+            irBadge.classList.remove('alert');
+        }, 8000);
+    } else {
+        clearTimeout(zoneAlertTimer);
+        clearNodeAlert('n-zone', 'ns-zone', 'SECURE');
+    }
+});
+
+socket.on('zone_alert', function(data) {
+    setNodeAlert('n-zone', 'ns-zone', 'ALERT');
+});
+
+// FIX: new event — server sends this when both sensors are CLEAR
+socket.on('zone_alert_clear', function() {
+    clearTimeout(zoneAlertTimer);
+    clearNodeAlert('n-zone', 'ns-zone', 'SECURE');
+    document.getElementById('badge-pir').classList.remove('alert');
+    document.getElementById('badge-ir').classList.remove('alert');
+});
+
+// ══════════════════════════════════════════
+// NODE 3: TRAFFIC (Uno R4)
+// ══════════════════════════════════════════
+socket.on('traffic_data', function(data) {
+    let b1 = document.getElementById('lane-box-1');
+    let b2 = document.getElementById('lane-box-2');
+
+    document.getElementById('t-lane1').innerText = data.lane1;
+    b1.className = 'lane-box ' + (data.lane1 === 'WAITING' ? 'waiting' : 'clear');
+
+    document.getElementById('t-lane2').innerText = data.lane2;
+    b2.className = 'lane-box ' + (data.lane2 === 'WAITING' ? 'waiting' : 'clear');
+
+    document.getElementById('t-light').innerText = data.light;
+});
+
+socket.on('traffic_alert', function(data) {
+    if (data.msg.includes('CLEARED')) {
+        clearNodeAlert('n-traffic', 'ns-traffic', 'NORMAL');
+    } else {
+        setNodeAlert('n-traffic', 'ns-traffic', 'EMERGENCY');
+    }
+});
+
+// ══════════════════════════════════════════
+// NODE 4: PARKING (ESP8266)
+// ══════════════════════════════════════════
+socket.on('parking_data', function(data) {
+    document.getElementById('p-free').innerText  = data.free;
+    document.getElementById('p-light').innerText = data.light;
+
+    document.getElementById('p-1').innerText     = data.p1;
+    document.getElementById('p-box-1').className = data.p1 === 'FREE' ? 'spot-row free' : 'spot-row occupied';
+
+    document.getElementById('p-2').innerText     = data.p2;
+    document.getElementById('p-box-2').className = data.p2 === 'FREE' ? 'spot-row free' : 'spot-row occupied';
+
+    // Update free count color
+    let fc = document.getElementById('p-free');
+    fc.style.color = data.free === '0' ? 'var(--red)' : 'var(--green)';
+    fc.style.textShadow = data.free === '0' ? '0 0 20px var(--red)' : '0 0 20px var(--green)';
+});
+
+// ── Map node helpers ──
+function setNodeAlert(nodeId, statusId, text) {
+    document.getElementById(nodeId).classList.add('alert');
+    document.getElementById(statusId).innerText = text;
+}
+function clearNodeAlert(nodeId, statusId, text) {
+    document.getElementById(nodeId).classList.remove('alert');
+    document.getElementById(statusId).innerText = text;
+}
+</script>
+</body>
+</html>
