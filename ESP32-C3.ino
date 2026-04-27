@@ -7,9 +7,9 @@
 #include <DHT.h>
 
 // Wifi-Connectivity
-const char* ssid        = "YOUR_WIFI_SSID";       
-const char* password    = "YOUR_WIFI_PASSKEY";   
-const char* mqtt_server = "RASPBERRY_PI_IP";          
+const char* ssid        = "YOUR_WIFI_SSID";
+const char* password    = "YOUR_WIFI_PASSKEY";
+const char* mqtt_server = "RASPBERRY_PI_IP";
 
 const char* key_char = "1234567890123456"; 
 const char* iv_char  = "abcdefghijklmnop"; 
@@ -18,14 +18,29 @@ WiFiClient   wifiClient;
 PubSubClient client(wifiClient);
 uint32_t     message_nonce = 0;
 
-// Pins Connection
-#define DHTPIN  1     // DHT11 Data Pin
-#define DHTTYPE DHT11 // Change to DHT22 if needed
+
+#define DHTPIN  6
+#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-#define LDR_PIN 0     // Analog pin for Light (ADC1_CH0)
-#define IR_PIN  3     // Digital pin for IR Tripwire
-#define PIR_PIN 4     // Digital pin for PIR Motion
+#define LDR_PIN 2   // ADC1_CH2
+#define IR_PIN  3
+#define PIR_PIN 4
+
+// ─── ADC AVERAGING ────────────────────────────────────────────────────────
+int smoothAnalogRead(int pin, int samples = 16) {
+  long sum = 0;
+  for (int i = 0; i < samples; i++) {
+    sum += analogRead(pin); // ~20µs per conversion, no blocking delay needed
+  }
+  return (int)(sum / samples);
+}
+
+// ─── DHT CACHE ────────────────────────────────────────────────────────────
+float cachedTemp = 0.0;
+float cachedHum  = 0.0;
+unsigned long lastDHTRead = 0;
+const unsigned long DHT_READ_INTERVAL = 2500;
 
 unsigned long lastTelemetryTime = 0;
 
@@ -57,7 +72,6 @@ String base64Encode(byte* data, int length) {
 void sendSecureMessage(const String& topic, const String& message) {
   message_nonce++;
   
-  // 1. Padding
   int msgLen = message.length();
   int padLen = 16 - (msgLen % 16);
   int paddedLen = msgLen + padLen;
@@ -65,7 +79,6 @@ void sendSecureMessage(const String& topic, const String& message) {
   memcpy(paddedMsg, message.c_str(), msgLen);
   for (int i = msgLen; i < paddedLen; i++) paddedMsg[i] = (byte)padLen;
 
-  // 2. AES-128-CBC Encryption
   byte encryptedBytes[paddedLen];
   CBC<AES128> cbc;
   cbc.clear();
@@ -73,11 +86,9 @@ void sendSecureMessage(const String& topic, const String& message) {
   cbc.setIV((const uint8_t*)iv_char, 16);
   cbc.encrypt(encryptedBytes, paddedMsg, paddedLen);
 
-  // 3. Base64 Encode
   String encB64 = base64Encode(encryptedBytes, paddedLen);
   String dataToSign = String(message_nonce) + ":" + encB64;
 
-  // 4. HMAC-SHA256 Signature
   byte hmacKey[64];
   memset(hmacKey, 0, 64);
   memcpy(hmacKey, key_char, 16);
@@ -103,102 +114,89 @@ void sendSecureMessage(const String& topic, const String& message) {
     signature += String(finalHash[i], HEX);
   }
   
-  // 5. Final Assembly & Publish
-  String finalPayload = dataToSign + ":" + signature;
-  Serial.println("[CRYPT] Payload Encrypted & Signed.");
-  client.publish(topic.c_str(), finalPayload.c_str());
+  client.publish(topic.c_str(), (dataToSign + ":" + signature).c_str());
+  Serial.println("[CRYPT] Payload sent.");
 }
 
 // Setup
 
 void setup() {
   Serial.begin(115200);
-  delay(4000); // Give Windows/USB time to connect to the Serial Monitor
+  delay(4000);
   
-  Serial.println("\n\n=========================================");
+  Serial.println("\n=========================================");
   Serial.println("🚀 ESP32-C3: SUPER NODE BOOTING...");
   Serial.println("=========================================");
+  Serial.println("[PIN MAP] DHT11→GPIO6 | LDR→GPIO2 | IR→GPIO3 | PIR→GPIO4");
 
-  Serial.println("[INIT] Configuring Sensors...");
-  pinMode(IR_PIN, INPUT);
+  pinMode(IR_PIN,  INPUT);
   pinMode(PIR_PIN, INPUT);
+  analogReadResolution(12);
+
   dht.begin();
+  // Warm-up: throwaway reads so first cached read in loop() is valid
+  delay(1500);
+  dht.readTemperature();
+  dht.readHumidity();
+  delay(500);
   Serial.println("[INIT] Sensors Ready.");
 
-  Serial.print("[WIFI] Connecting to SSID: ");
-  Serial.println(ssid);
-  
+  Serial.print("[WIFI] Connecting...");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED) { 
-    delay(1000); 
-    Serial.print("."); 
-    attempts++;
-    if(attempts > 15) {
-      Serial.println("\n[ERROR] Wi-Fi Timeout! Check SSID/Password. Restarting in 3s...");
-      delay(3000);
-      ESP.restart();
-    }
+    delay(1000); Serial.print(".");
+    if (++attempts > 15) { delay(3000); ESP.restart(); }
   }
-  
-  Serial.println("\n[WIFI] ✅ Success! IP Address: ");
-  Serial.println(WiFi.localIP());
-  
-  Serial.print("[MQTT] Configuring broker at: ");
-  Serial.println(mqtt_server);
+  Serial.println("\n[WIFI] ✅ IP: " + WiFi.localIP().toString());
   client.setServer(mqtt_server, 1883);
 }
 
 // Main Loop
 void loop() {
-  // Reconnect MQTT if disconnected
   if (!client.connected()) {
-    Serial.println("[MQTT] Connection lost. Attempting reconnect...");
+    Serial.println("[MQTT] Reconnecting...");
     if (client.connect("ESP32-C3-ZoneNode")) {
-      Serial.println("[MQTT] ✅ Connected to Control Room!");
+      Serial.println("[MQTT] ✅ Connected!");
     } else {
-      Serial.print("[MQTT] ❌ Failed. State: ");
-      Serial.println(client.state());
-      delay(2000); 
-      return; 
+      Serial.println("[MQTT] ❌ State: " + String(client.state()));
+      delay(2000);
+      return;
     }
   }
-  
-  client.loop(); // Keep MQTT alive
+  client.loop();
 
-  // Transmit Telemetry every 3 seconds
+  // ── DHT on its own 2.5s timer ───────────────────────────────────────────
+  if (millis() - lastDHTRead >= DHT_READ_INTERVAL) {
+    lastDHTRead = millis();
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (!isnan(t) && t > -10 && t < 80)   cachedTemp = t;
+    else Serial.println("   -> [DHT] Bad temp, keeping: " + String(cachedTemp));
+    if (!isnan(h) && h >= 0  && h <= 100) cachedHum  = h;
+    else Serial.println("   -> [DHT] Bad hum,  keeping: " + String(cachedHum));
+  }
+
+  // ── Telemetry every 3s ──────────────────────────────────────────────────
   if (millis() - lastTelemetryTime > 3000) {
     lastTelemetryTime = millis();
-    
-    Serial.println("\n[SENSORS] Reading Telemetry...");
-    
-    // Read Security
-    int ir_val = digitalRead(IR_PIN);
+
+    int ir_val  = digitalRead(IR_PIN);
     int pir_val = digitalRead(PIR_PIN);
-    
-    // Read Environment
-    int t = dht.readTemperature();
-    int h = dht.readHumidity();
-    int ldr_val = analogRead(LDR_PIN);
-    
-    // Fail-safe for DHT11
-    if(isnan(t)) { t = 0; Serial.println("   -> [WARNING] Failed to read DHT Temp!"); }
-    if(isnan(h)) { h = 0; Serial.println("   -> [WARNING] Failed to read DHT Humidity!"); }
+    int ldr_val = smoothAnalogRead(LDR_PIN, 16);
+    int t = (int)cachedTemp;
+    int h = (int)cachedHum;
 
-    Serial.print("   -> Temp: "); Serial.print(t); Serial.println("C");
-    Serial.print("   -> Hum:  "); Serial.print(h); Serial.println("%");
-    Serial.print("   -> Light:"); Serial.println(ldr_val);
-    Serial.print("   -> IR:   "); Serial.println(ir_val);
-    Serial.print("   -> PIR:  "); Serial.println(pir_val);
+    Serial.println("\n[SENSORS] T:" + String(t) + "C H:" + String(h) +
+                   "% L:" + String(ldr_val) +
+                   " IR:" + String(ir_val) + " PIR:" + String(pir_val));
 
-    // Build the super string
-    // Format: ENV:T:25:H:60:L:1024:IR:1:PIR:0
-    String payload = "ENV:T:" + String(t) + ":H:" + String(h) + ":L:" + String(ldr_val) + ":IR:" + String(ir_val) + ":PIR:" + String(pir_val);
-    
-    Serial.println("[NET] Transmitting payload: " + payload);
+    String payload = "ENV:T:" + String(t) + ":H:" + String(h) +
+                     ":L:" + String(ldr_val) +
+                     ":IR:" + String(ir_val) +
+                     ":PIR:" + String(pir_val);
+
     sendSecureMessage("city/zone1/status", payload);
-    Serial.println("[NET] Transmission complete.");
   }
 }
